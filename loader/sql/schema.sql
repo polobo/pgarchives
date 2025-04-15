@@ -54,6 +54,7 @@ CREATE TABLE lists(
    shortdesc text NOT NULL,
    description text NOT NULL,
    active boolean NOT NULL,
+   subscriber_access boolean NOT NULL,
    groupid int NOT NULL REFERENCES listgroups(groupid)
 );
 
@@ -90,6 +91,12 @@ CREATE TABLE loaderrors(
    err text NOT NULL
 );
 
+
+\if :DEV
+INSERT INTO listgroups (groupid, groupname, sortkey) VALUES (1, 'Developer lists', 1);
+INSERT INTO lists (listid, listname, shortdesc, description, active, groupid, subscriber_access) VALUES (1, 'pgsql-hackers', 'pgsql-hackers', 'The PostgreSQL developers team lives here. Discussion of current development issues, problems and bugs, and proposed new features. If your question cannot be answered by people in the other lists, and it is likely that only a developer will know the answer, you may re-post your question in this list. You must try elsewhere first!', True, 1, True);
+ALTER TABLE messages DROP COLUMN fti;
+\else
 /* textsearch configs */
 CREATE TEXT SEARCH CONFIGURATION pg (PARSER=tsparser);
 
@@ -126,6 +133,7 @@ CREATE TRIGGER messages_fti_trigger
  BEFORE INSERT OR UPDATE OF subject, bodytxt ON  messages
  FOR EACH ROW EXECUTE PROCEDURE messages_fti_trigger_func();
 CREATE INDEX messages_fti_idx ON messages USING gin(fti);
+\endif
 
 CREATE TABLE legacymap(
        listid int not null,

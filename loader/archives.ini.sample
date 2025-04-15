@@ -2,16 +2,16 @@
 connstr=dbname=archives
 
 [varnish]
-purgeurl=https://wrigleys.postgresql.org/api/varnish/purge/
+# purgeurl=https://wrigleys.postgresql.org/api/varnish/purge/
 
 [smtp]
-server=localhost:9911
-heloname=localhost
-resender=noreply@example.com
+# server=localhost:9911
+# heloname=localhost
+# resender=noreply@example.com
 
 [pglister]
 # synchronize subscribers between pgarchives and pglister
-subscribers=0
-root=/path/to/pglister
-myname=pgarchives
-apikey=CHANGEME
+# subscribers=0
+# root=/path/to/pglister
+# myname=pgarchives
+# apikey=CHANGEME
