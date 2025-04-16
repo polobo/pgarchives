@@ -706,7 +706,7 @@ def resend_complete(request, messageid):
     })
 
 
-def perform_search(query, firstdate, list_sort, listid=None, listnames=None, streamer=None):
+def perform_search(query, datecode, sortcode, listid=None, listnames=None, streamer=None):
     if not query and not streamer:
         return []
     
@@ -747,6 +747,17 @@ def perform_search(query, firstdate, list_sort, listid=None, listnames=None, str
                 return [{'messageidmatch': cleaned_id}]
         # If not found, fall through to a regular search
 
+    firstdate = None
+    if datecode:
+        days = int(datecode)
+        if days >= 1 and days <= 365:
+            firstdate = datetime.now() - timedelta(days=days)
+       
+    list_sort = 'i'
+    if sortcode:
+        if sortcode in ('d', 'r', 'i'):
+            list_sort = sortcode
+
     curs.execute("SET gin_fuzzy_search_limit=10000")
     qstr = "SELECT messageid, date, subject, _from, ts_rank_cd(fti, plainto_tsquery('public.pg', %(q)s)), ts_headline(bodytxt, plainto_tsquery('public.pg', %(q)s),'StartSel=\"[[[[[[\",StopSel=\"]]]]]]\"') FROM messages m WHERE fti @@ plainto_tsquery('public.pg', %(q)s)"
     params = {
@@ -776,11 +787,11 @@ def perform_search(query, firstdate, list_sort, listid=None, listnames=None, str
             'f': mailfrom,
             'r': rank,
             'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
-        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()],
+       } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()],
         streamer)
         return True
     else:
-        return json.dumps([
+        return [
         {
             'm': messageid,
             'd': date.isoformat(),
@@ -788,7 +799,9 @@ def perform_search(query, firstdate, list_sort, listid=None, listnames=None, str
             'f': mailfrom,
             'r': rank,
             'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
-        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()])
+            'a_found': abstract[abstract.find("[[[[[[") + 6:abstract.find("]]]]]]")],
+            'a_after': abstract.replace(abstract[abstract.find("[[[[[["):abstract.find("]]]]]]") + 6], "").replace("[[[[[[", "").replace("]]]]]]", ""),
+        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()]
 
 
 @csrf_exempt
@@ -801,10 +814,10 @@ def advanced_search(request):
     """
     queryval = request.GET.get('q', None)
     sortval = request.GET.get('s', 'i')
-    dateval = request.GET.get('d', -1)
+    dateval = request.GET.get('d', '-1')
     listid = 1
 
-    hits = perform_search(queryval, listid, dateval, sortval)
+    hits = perform_search(queryval, dateval, sortval, listid=listid)
 
     totalhits = len(hits)
 
@@ -846,6 +859,8 @@ def advanced_search(request):
             'author': h['f'],
             'messageid': h['m'],
             'abstract': h['a'],
+            'abstract_found': h['a_found'],
+            'abstract_after': h['a_after'],
             'rank': h['r'],
         } for h in hits[firsthit - 1:firsthit + hitsperpage - 1]],
         'sortoptions': sortoptions,
@@ -886,24 +901,11 @@ def search(request):
     query = request.POST['q']
     ln = request.POST['ln'] if 'ln' in request.POST else None
     
-    if 'd' in request.POST:
-        days = int(request.POST['d'])
-        if days < 1 or days > 365:
-            firstdate = None
-        else:
-            firstdate = datetime.now() - timedelta(days=days)
-    else:
-        firstdate = None
-
-    if 's' in request.POST:
-        list_sort = request.POST['s']
-        if list_sort not in ('d', 'r', 'i'):
-            list_sort = 'i'
-    else:
-        list_sort = 'r'
+    dateval = request.POST.get('d', '-1')
+    sortval = request.POST.get('s', 'i')
 
     resp = HttpResponse(content_type='application/json')
-    perform_search(query, firstdate, list_sort, listname=ln, streamer=resp)
+    perform_search(query, dateval, sortval, listname=ln, streamer=resp)
     return resp
 
 

@@ -28,6 +28,7 @@ pip install -r dev_requirements.txt
 Create a database for the application:
 
 ```bash
+createdb archives
 cd django
 ./manage.py migrate
 ```

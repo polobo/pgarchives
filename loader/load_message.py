@@ -152,7 +152,7 @@ if __name__ == "__main__":
             try:
                 ap.analyze(date_override=opt.force_date)
             except IgnorableException as e:
-                log_failed_message(listid, "mbox", opt.mbox, ap, e)
+                #log_failed_message(listid, "mbox", opt.mbox, ap, e)
                 opstatus.failed += 1
                 continue
             ap.store(conn, listid, opt.overwrite, opt.overwrite)
