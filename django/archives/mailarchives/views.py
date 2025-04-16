@@ -706,7 +706,7 @@ def resend_complete(request, messageid):
     })
 
 
-def perform_search(query, datecode, sortcode, listid=None, listnames=None, streamer=None):
+def perform_search(query, datecode, sortcode, oneperthread=False, listid=None, listnames=None, streamer=None):
     if not query and not streamer:
         return []
     
@@ -759,7 +759,39 @@ def perform_search(query, datecode, sortcode, listid=None, listnames=None, strea
             list_sort = sortcode
 
     curs.execute("SET gin_fuzzy_search_limit=10000")
-    qstr = "SELECT messageid, date, subject, _from, ts_rank_cd(fti, plainto_tsquery('public.pg', %(q)s)), ts_headline(bodytxt, plainto_tsquery('public.pg', %(q)s),'StartSel=\"[[[[[[\",StopSel=\"]]]]]]\"') FROM messages m WHERE fti @@ plainto_tsquery('public.pg', %(q)s)"
+    qstr = """-- Search for messages matching query --
+SELECT * FROM (
+SELECT
+    *,
+"""
+    qstr += "    row_number() over (partition by threadid order by "
+    if list_sort == 'r':
+        qstr += "ts_rank_cd DESC"
+    elif list_sort == 'd':
+        qstr += "date DESC"
+    else:
+        qstr += "date ASC"
+    qstr += ") AS thread_rank"
+
+    qstr +="""
+FROM
+(
+    SELECT 
+        messageid,
+        threadid, 
+        date, 
+        subject, 
+        _from, 
+        ts_rank_cd(fti, plainto_tsquery('public.pg', %(q)s)), 
+        ts_headline(
+            bodytxt,
+            plainto_tsquery('public.pg', %(q)s),
+            'StartSel=\"[[[[[[\",
+            StopSel=\"]]]]]]\"'
+        )
+    FROM messages m 
+    WHERE fti @@ plainto_tsquery('public.pg', %(q)s)
+"""
     params = {
         'q': query,
     }
@@ -769,12 +801,19 @@ def perform_search(query, datecode, sortcode, listid=None, listnames=None, strea
     if firstdate:
         qstr += " AND m.date > %(date)s"
         params['date'] = firstdate
+
+    qstr += ") AS finding ) AS ranking"
+
+    if oneperthread:
+        qstr += " WHERE thread_rank = 1"
+
     if list_sort == 'r':
-        qstr += " ORDER BY ts_rank_cd(fti, plainto_tsquery(%(q)s)) DESC LIMIT 1000"
+        qstr += " ORDER BY ts_rank_cd DESC LIMIT 1000"
     elif list_sort == 'd':
         qstr += " ORDER BY date DESC LIMIT 1000"
     else:
         qstr += " ORDER BY date ASC LIMIT 1000"
+
 
     curs.execute(qstr, params)
 
@@ -787,13 +826,15 @@ def perform_search(query, datecode, sortcode, listid=None, listnames=None, strea
             'f': mailfrom,
             'r': rank,
             'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
-       } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()],
+       } for messageid, threadid, date, subject, mailfrom, rank, abstract, messages_ago, max_thread_rank in curs.fetchall()],
         streamer)
         return True
     else:
         return [
         {
             'm': messageid,
+            't': threadid,
+            'tr': thread_rank,
             'd': date.isoformat(),
             's': subject,
             'f': mailfrom,
@@ -801,7 +842,7 @@ def perform_search(query, datecode, sortcode, listid=None, listnames=None, strea
             'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
             'a_found': abstract[abstract.find("[[[[[[") + 6:abstract.find("]]]]]]")],
             'a_after': abstract.replace(abstract[abstract.find("[[[[[["):abstract.find("]]]]]]") + 6], "").replace("[[[[[[", "").replace("]]]]]]", ""),
-        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()]
+        } for messageid, threadid, date, subject, mailfrom, rank, abstract, thread_rank in curs.fetchall()]
 
 
 @csrf_exempt
@@ -813,11 +854,13 @@ def advanced_search(request):
                         querystr)),
     """
     queryval = request.GET.get('q', None)
-    sortval = request.GET.get('s', 'i')
+    sortval = request.GET.get('s', 'd')
     dateval = request.GET.get('d', '-1')
+    oneperthread = request.GET.get('r', '0')
+
     listid = 1
 
-    hits = perform_search(queryval, dateval, sortval, listid=listid)
+    hits = perform_search(queryval, dateval, sortval, oneperthread=='1', listid=listid)
 
     totalhits = len(hits)
 
@@ -827,7 +870,7 @@ def advanced_search(request):
             return HttpResponseRedirect('/message-id/%s' % hits[0]['messageidmatch'])
     
     firsthit = 1
-    hitsperpage = 10
+    hitsperpage = 20
 
     sortoptions = (
         {'val': 'r', 'text': 'Rank', 'selected': request.GET.get('s', '') not in ('d', 'i')},
@@ -858,6 +901,8 @@ def advanced_search(request):
             'subject': h['s'],
             'author': h['f'],
             'messageid': h['m'],
+            'threadid': h['t'],
+            'thread_rank': h['tr'],
             'abstract': h['a'],
             'abstract_found': h['a_found'],
             'abstract_after': h['a_after'],
@@ -868,6 +913,7 @@ def advanced_search(request):
         'listid': listid,
         'dates': dateoptions,
         'dateval': dateval,
+        'oneperthread': oneperthread,
     })
 
 @csrf_exempt

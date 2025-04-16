@@ -44,6 +44,12 @@
         <option value="{{s.val}}"{%if s.selected%} SELECTED{%endif%}>{{s.text}}</option>{%endfor%}
         </select>
     </div>
+    <div class="form-group">
+        <label>
+            <input type="checkbox" id="search-recent" name="r" value="1" {%if oneperthread == '1'%}checked{%endif%}>
+            Limit to first message per thread
+        </label>
+    </div>
     </div><!-- /.col-lg-6 -->
 </div><!-- /.row -->
 </form>
@@ -63,6 +69,7 @@
         <div style="margin: 1em 0;">
             <div>{{forloop.counter0|add:firsthit}}. <a href="/message-id/{{hit.messageid|urlencode}}">{{hit.subject}}</a> [{{hit.rank|floatformat:2}}]</div>
             <div>From {{hit.author}} on {{hit.date}}.</div>
+            <div>Thread# {{hit.threadid}} Rank: {{hit.thread_rank}} ({{oneperthread}})</div>
             <div><b>{{hit.abstract_found}}</b> {{hit.abstract_after}}</div>
             <div><a href="{{PGWEB_ADDRESS}}/message-id/{{hit.messageid|urlencode}}">{{PGWEB_ADDRESS}}/message-id/{{hit.messageid}}</a></div>
         </div>
