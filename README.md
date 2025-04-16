@@ -1,6 +1,7 @@
 # PG archives
 
-This application manages PostgreSQL mailing list archives.
+This application manages PostgreSQL mailing list archives.  However, the search
+feature is implemented in pgweb.
 
 ## The Application
 
@@ -27,8 +28,15 @@ pip install -r dev_requirements.txt
 Create a database for the application:
 
 ```bash
-createdb archives
-psql -d archives --set DEV=true -c '\i loader/sql/schema.sql' -c 'COMMIT'
+cd django
+./manage.py migrate
+```
+
+Some suggested modifications to be later incorporated more formally.
+
+```sql
+INSERT INTO listgroups (groupid, groupname, sortkey) VALUES (1, 'Developer lists', 1);
+INSERT INTO lists (listid, listname, shortdesc, description, active, groupid, subscriber_access) VALUES (1, 'pgsql-hackers', 'pgsql-hackers', 'The PostgreSQL developers team lives here. Discussion of current development issues, problems and bugs, and proposed new features. If your question cannot be answered by people in the other lists, and it is likely that only a developer will know the answer, you may re-post your question in this list. You must try elsewhere first!', True, 1, True);
 ```
 
 Create config for the loader scripts:

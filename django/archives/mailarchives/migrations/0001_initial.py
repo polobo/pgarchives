@@ -58,7 +58,7 @@ class Migration(migrations.Migration):
                 ('date', models.DateTimeField()),
                 ('messageid', models.TextField()),
                 ('bodytxt', models.TextField()),
-                ('parentid', models.IntegerField()),
+                ('parentid', models.IntegerField(null=True, blank=False)),
                 ('has_attachment', models.BooleanField(default=False)),
                 ('hiddenstatus', models.IntegerField(null=True)),
             ],

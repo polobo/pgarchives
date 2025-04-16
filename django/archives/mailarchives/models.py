@@ -25,7 +25,7 @@ class Message(models.Model):
     messageid = models.TextField(null=False)
     bodytxt = models.TextField(null=False)
     # rawtxt is a bytea field, which django doesn't support (easily)
-    parentid = models.IntegerField(null=False, blank=False)
+    parentid = models.IntegerField(null=True, blank=False)
     has_attachment = models.BooleanField(null=False, default=False)
     hiddenstatus = models.IntegerField(null=True)
     # fti is a tsvector field, which django doesn't support (easily)

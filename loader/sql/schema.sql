@@ -91,6 +91,9 @@ CREATE TABLE loaderrors(
    err text NOT NULL
 );
 
+create view messages_meta as select id, parentid, threadid, _from, _to, cc, subject, date, has_attachment, hiddenstatus, messageid from messages;
+create view attachments_meta as select id, message, filename, contenttype from attachments;
+
 
 \if :DEV
 INSERT INTO listgroups (groupid, groupname, sortkey) VALUES (1, 'Developer lists', 1);
