@@ -82,6 +82,7 @@ class ArchivesParserStorage(ArchivesParser):
                     'subject': self.subject or '',
                     'date': self.date,
                     'has_attachment': len(self.attachments) > 0,
+                    # has_patches
                 })
                 rc += curs.rowcount
                 if rc == 0:
@@ -97,6 +98,7 @@ class ArchivesParserStorage(ArchivesParser):
                         'filename': a[0] or 'unknown_filename',
                         'contenttype': a[1],
                         'attachment': bytearray(a[2]),
+                        # is_patch
                     } for a in self.attachments])
                 opstatus.overwritten += 1
                 log.status("Message %s overwritten" % self.msgid)

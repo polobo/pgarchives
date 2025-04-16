@@ -706,67 +706,30 @@ def resend_complete(request, messageid):
     })
 
 
-@csrf_exempt
-def search(request):
-    if not settings.PUBLIC_ARCHIVES:
-        # We don't support searching of non-public archives at all at this point.
-        # XXX: room for future improvement
-        return HttpResponseForbidden('Not public archives')
+def perform_search(query, firstdate, list_sort, listid=None, listnames=None, streamer=None):
+    if not query and not streamer:
+        return []
+    
+    if not query and streamer:
+        return False
 
-    # Only certain hosts are allowed to call the search API
-    allowed = False
-    for ip_range in settings.SEARCH_CLIENTS:
-        if ipaddress.ip_address(request.META['REMOTE_ADDR']) in ipaddress.ip_network(ip_range):
-            allowed = True
-            break
-    if not allowed:
-        return HttpResponseForbidden('Invalid host')
-
+    if listid and listnames:
+        raise Exception("Cannot specify both listid and listname")
+    
     curs = connection.cursor()
-
-    # Perform a search of the archives and return a JSON document.
-    # Expects the following (optional) POST parameters:
-    # q = query to search for
-    # ln = comma separate list of listnames to search in
-    # d = number of days back to search for, or -1 (or not specified)
-    #      to search the full archives
-    # s = sort results by ['r'=rank, 'd'=date, 'i'=inverse date]
-    if not request.method == 'POST':
-        raise Http404('I only respond to POST')
-
-    if 'q' not in request.POST:
-        raise Http404('No search query specified')
-    query = request.POST['q']
-
-    if 'ln' in request.POST:
+    lists = None
+    if listnames:
         try:
             curs.execute("SELECT listid FROM lists WHERE listname=ANY(%(names)s)", {
-                'names': request.POST['ln'].split(','),
+                'names': listnames.split(','),
             })
             lists = [x for x, in curs.fetchall()]
         except Exception:
             # If failing to parse list of lists, just search all
             lists = None
-    else:
-        lists = None
-
-    if 'd' in request.POST:
-        days = int(request.POST['d'])
-        if days < 1 or days > 365:
-            firstdate = None
-        else:
-            firstdate = datetime.now() - timedelta(days=days)
-    else:
-        firstdate = None
-
-    if 's' in request.POST:
-        list_sort = request.POST['s']
-        if list_sort not in ('d', 'r', 'i'):
-            list_stort = 'r'
-    else:
-        list_sort = 'r'
-
-    # Ok, we have all we need to do the search
+    
+    if listid:
+        lists = [listid]
 
     if query.find('@') > 0:
         cleaned_id = query.strip().removeprefix('<').removesuffix('>')
@@ -778,11 +741,10 @@ def search(request):
         })
         a = curs.fetchall()
         if len(a) == 1:
-            # Yup, this was a messageid
-            resp = HttpResponse(content_type='application/json')
-
-            json.dump({'messageidmatch': 1}, resp)
-            return resp
+            if streamer:
+                json.dump({'messageidmatch': 1}, streamer)
+            else:
+                return [{'messageidmatch': cleaned_id}]
         # If not found, fall through to a regular search
 
     curs.execute("SET gin_fuzzy_search_limit=10000")
@@ -805,9 +767,8 @@ def search(request):
 
     curs.execute(qstr, params)
 
-    resp = HttpResponse(content_type='application/json')
-
-    json.dump([
+    if streamer:
+        json.dump([
         {
             'm': messageid,
             'd': date.isoformat(),
@@ -816,7 +777,133 @@ def search(request):
             'r': rank,
             'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
         } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()],
-        resp)
+        streamer)
+        return True
+    else:
+        return json.dumps([
+        {
+            'm': messageid,
+            'd': date.isoformat(),
+            's': subject,
+            'f': mailfrom,
+            'r': rank,
+            'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
+        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()])
+
+
+@csrf_exempt
+def advanced_search(request):
+    """
+    'pagelinks': "&nbsp;".join(
+    generate_pagelinks(pagenum,
+                        (totalhits - 1) // hitsperpage + 1,
+                        querystr)),
+    """
+    queryval = request.GET.get('q', None)
+    sortval = request.GET.get('s', 'i')
+    dateval = request.GET.get('d', -1)
+    listid = 1
+
+    hits = perform_search(queryval, listid, dateval, sortval)
+
+    totalhits = len(hits)
+
+    if totalhits == 1:
+        # might be a messageid match
+        if 'messageidmatch' in hits[0]:
+            return HttpResponseRedirect('/message-id/%s' % hits[0]['messageidmatch'])
+    
+    firsthit = 1
+    hitsperpage = 10
+
+    sortoptions = (
+        {'val': 'r', 'text': 'Rank', 'selected': request.GET.get('s', '') not in ('d', 'i')},
+        {'val': 'd', 'text': 'Date', 'selected': request.GET.get('s', '') == 'd'},
+        {'val': 'i', 'text': 'Reverse date', 'selected': request.GET.get('s', '') == 'i'},
+    )
+
+    dateoptions = (
+        {'val': -1, 'text': 'anytime'},
+        {'val': 1, 'text': 'within last day'},
+        {'val': 7, 'text': 'within last week'},
+        {'val': 31, 'text': 'within last month'},
+        {'val': 186, 'text': 'within last 6 months'},
+        {'val': 365, 'text': 'within last year'},
+    )
+
+    (groups, listgroupid) = get_all_groups_and_lists(request)
+    return render_nav(NavContext(request, all_groups=groups), 'advancedsearch.html', {
+        'groups': [{'groupname': g['groupname'], 'lists': g['lists']} for g in groups],
+        'hitcount': totalhits,
+        'firsthit': firsthit,
+        'lasthit': min(totalhits, firsthit + hitsperpage - 1),
+        'query': request.GET['q'] if 'q' in request.GET else '',
+        'archives_root': '/', #settings.ARCHIVES_FRONT_ADDRESS,
+        'pagelinks': '',
+        'hits': [{
+            'date': h['d'],
+            'subject': h['s'],
+            'author': h['f'],
+            'messageid': h['m'],
+            'abstract': h['a'],
+            'rank': h['r'],
+        } for h in hits[firsthit - 1:firsthit + hitsperpage - 1]],
+        'sortoptions': sortoptions,
+        'lists': List.objects.all().order_by("group__sortkey"),
+        'listid': listid,
+        'dates': dateoptions,
+        'dateval': dateval,
+    })
+
+@csrf_exempt
+def search(request):
+    if not settings.PUBLIC_ARCHIVES:
+        # We don't support searching of non-public archives at all at this point.
+        # XXX: room for future improvement
+        return HttpResponseForbidden('Not public archives')
+
+    # Only certain hosts are allowed to call the search API
+    allowed = False
+    for ip_range in settings.SEARCH_CLIENTS:
+        if ipaddress.ip_address(request.META['REMOTE_ADDR']) in ipaddress.ip_network(ip_range):
+            allowed = True
+            break
+    if not allowed:
+        return HttpResponseForbidden('Invalid host')
+
+    # Perform a search of the archives and return a JSON document.
+    # Expects the following (optional) POST parameters:
+    # q = query to search for
+    # ln = comma separate list of listnames to search in
+    # d = number of days back to search for, or -1 (or not specified)
+    #      to search the full archives
+    # s = sort results by ['r'=rank, 'd'=date, 'i'=inverse date]
+    if not request.method == 'POST':
+        raise Http404('I only respond to POST')
+
+    if 'q' not in request.POST:
+        raise Http404('No search query specified')
+    query = request.POST['q']
+    ln = request.POST['ln'] if 'ln' in request.POST else None
+    
+    if 'd' in request.POST:
+        days = int(request.POST['d'])
+        if days < 1 or days > 365:
+            firstdate = None
+        else:
+            firstdate = datetime.now() - timedelta(days=days)
+    else:
+        firstdate = None
+
+    if 's' in request.POST:
+        list_sort = request.POST['s']
+        if list_sort not in ('d', 'r', 'i'):
+            list_sort = 'i'
+    else:
+        list_sort = 'r'
+
+    resp = HttpResponse(content_type='application/json')
+    perform_search(query, firstdate, list_sort, listname=ln, streamer=resp)
     return resp
 
 

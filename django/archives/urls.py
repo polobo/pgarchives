@@ -44,6 +44,7 @@ urlpatterns = [
 
     # Search
     re_path(r'^archives-search/', archives.mailarchives.views.search),
+    re_path(r'^search/$', archives.mailarchives.views.advanced_search),
 
     # Date etc indexes
     re_path(r'^list/([\w-]+)/$', archives.mailarchives.views.monthlist),
