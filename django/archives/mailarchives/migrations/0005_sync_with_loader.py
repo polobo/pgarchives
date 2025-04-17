@@ -100,6 +100,9 @@ CREATE TRIGGER messages_fti_trigger
  FOR EACH ROW EXECUTE PROCEDURE messages_fti_trigger_func();
 CREATE INDEX messages_fti_idx ON messages USING gin(fti);
 
+CREATE FUNCTION is_patch(att attachments) RETURNS boolean LANGUAGE sql IMMUTABLE STRICT
+    RETURN (att).filename ~ '\.(diff|diff\.gz|patch|patch\.gz|tar\.gz|tgz|tar\.bz2|zip)$';
+;
             """,
         ),
         
