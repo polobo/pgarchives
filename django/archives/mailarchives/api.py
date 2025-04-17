@@ -117,7 +117,7 @@ def thread(request, msgid):
             'date': m.date.isoformat(),
             'from': m.mailfrom,
             'subj': m.subject,
-            'atts': [{'id': a.id, 'name': a.filename, 'is_patch': a.is_patch} for a in m.attachment_set.extra(select={'is_patch': 'attachments.is_patch'}).all()],
+            'atts': [{'id': a.id, 'name': a.filename, 'is_patch': a.is_patch, 'content_type': a.contenttype} for a in m.attachment_set.extra(select={'is_patch': 'attachments.is_patch'}).all()],
         }
         for m in mlist], resp)
     if settings.PUBLIC_ARCHIVES:
