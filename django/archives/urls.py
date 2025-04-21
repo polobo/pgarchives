@@ -7,8 +7,10 @@ from django.conf import settings
 
 import archives.mailarchives.views
 import archives.mailarchives.api
+import archives.mailarchives.dev
 
 urlpatterns = [
+    re_path(r'^dev/debug/', archives.mailarchives.dev.debug),
     # Examples:
     # re_path(r'^$', 'archives.views.home', name='home),
     # re_path(r'^archives/', include('archives.foo.urls')),
