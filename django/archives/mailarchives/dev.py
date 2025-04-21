@@ -182,12 +182,13 @@ def get_patch_data_as_json(threadid, messageid):
                     join lateral (
                        select jsonb_agg(
                                 jsonb_build_object(
-                                    'filename', filename,
-                                    'content_type', contenttype,
-                                    'is_patch', is_patch(attachments)
-                                ) order by filename) as fileset
-                       from attachments
-                       where pm.id = attachments.message
+                                    'attachment_id', a.id,
+                                    'filename', a.filename,
+                                    'content_type', a.contenttype,
+                                    'is_patch', is_patch(a)
+                                ) order by a.filename) as fileset
+                       from attachments as a
+                       where pm.id = a.message
                     ) as ma on true
                     where pm.id = %s;
                        """, 
