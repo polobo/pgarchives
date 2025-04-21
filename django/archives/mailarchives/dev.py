@@ -1,10 +1,12 @@
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import render
 from django.conf import settings
+from django.db import connection
 import subprocess
 import os
 import datetime
 import json
+
 def debug(request):
     try:
         pg_repo_code = subprocess.check_output(
@@ -47,8 +49,11 @@ def threads(request):
             "commit_sha": None,
             "patch_id": None,
             "subject_line": "Initial discussion on feature X",
+            "thread_subject": "Initial discussion on feature X",
             "sender": "user1@example.com",
-            "id": 101
+            "id": 101,
+            "patch_date": "2023-01-01 12:00:00",
+            "thread_date": "2023-01-01 10:00:00"
         },
         {
             "thread_id": "2",
@@ -58,8 +63,11 @@ def threads(request):
             "commit_sha": "def456",
             "patch_id": None,
             "subject_line": "Follow-up on feature Y",
+            "thread_subject": "Follow-up on feature Y",
             "sender": "user2@example.com",
-            "id": 102
+            "id": 102,
+            "patch_date": "2023-01-02 14:00:00",
+            "thread_date": "2023-01-02 12:00:00"
         },
         {
             "thread_id": "3",
@@ -69,8 +77,11 @@ def threads(request):
             "commit_sha": None,
             "patch_id": "patch-003",
             "subject_line": "Bug fix discussion",
+            "thread_subject": "Bug fix discussion",
             "sender": "user3@example.com",
-            "id": 103
+            "id": 103,
+            "patch_date": "2023-01-03 16:00:00",
+            "thread_date": "2023-01-03 14:00:00"
         }
     ]
 
@@ -87,41 +98,49 @@ def threads_with_patches(request):
     if not settings.PUBLIC_ARCHIVES:
         return HttpResponseForbidden('No API access on private archives for now')
 
-    # Generate a fake result similar to dev.threads
+    # Execute a placeholder SQL query
+    with connection.cursor() as cursor:
+        cursor.execute("""-- Find threads with patches
+                    select distinct on (threadid)
+                        pm.threadid,
+                        pm.id, 
+                        pm._from, 
+                        pm.subject, 
+                        pm.messageid,
+                        ma.patch_count,
+                        tm.subject AS thread_subject,
+                        pm.date AS patch_date,
+                        tm.date AS thread_date
+                    from messages AS pm --patch message
+                    left join messages AS tm on (pm.threadid = tm.id) --thread message
+                    join lateral (
+                       select count(*) as patch_count 
+                       from attachments 
+                       where pm.id = attachments.message and is_patch(attachments)
+                    ) as ma on true 
+                    where pm.has_attachment and ma.patch_count > 0 and pm.hiddenstatus is null 
+                    order by pm.threadid, pm.date desc 
+                    limit 5;
+                       """)
+        rows = cursor.fetchall()
+
+    # Convert the SQL result into thread_list
     thread_list = [
         {
-            "thread_id": "1",
-            "message_id": "msg-001",
-            "file_count": 5,
-            "file_version": "v1",
+            "thread_id": str(row[0]),
+            "message_id": row[4],
+            "file_count": row[5],
+            "file_version": None,
             "commit_sha": None,
             "patch_id": None,
-            "subject_line": "Initial discussion on feature X",
-            "sender": "user1@example.com",
-            "id": 101
-        },
-        {
-            "thread_id": "2",
-            "message_id": "msg-002",
-            "file_count": 3,
-            "file_version": "v1",
-            "commit_sha": "def456",
-            "patch_id": None,
-            "subject_line": "Follow-up on feature Y",
-            "sender": "user2@example.com",
-            "id": 102
-        },
-        {
-            "thread_id": "3",
-            "message_id": "msg-003",
-            "file_count": 7,
-            "file_version": "v2",
-            "commit_sha": None,
-            "patch_id": "patch-003",
-            "subject_line": "Bug fix discussion",
-            "sender": "user3@example.com",
-            "id": 103
+            "subject_line": row[3],
+            "thread_subject": row[6],
+            "sender": row[2],
+            "id": row[1],
+            "patch_date": row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else None,
+            "thread_date": row[8].strftime('%Y-%m-%d %H:%M:%S') if row[8] else None
         }
+        for row in rows
     ]
 
     resp = HttpResponse(content_type='application/json')

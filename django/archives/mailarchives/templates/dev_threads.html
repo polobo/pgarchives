@@ -11,12 +11,13 @@
         <tr>
             <th style="border: 1px solid black; padding: 8px;">Subject Line</th>
             <th style="border: 1px solid black; padding: 8px;">Sender</th>
-            <th style="border: 1px solid black; padding: 8px;">Thread ID</th>
-            <th style="border: 1px solid black; padding: 8px;">Message ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Thread Subject</th>
             <th style="border: 1px solid black; padding: 8px;">File Count</th>
             <th style="border: 1px solid black; padding: 8px;">File Version</th>
             <th style="border: 1px solid black; padding: 8px;">Commit SHA</th>
             <th style="border: 1px solid black; padding: 8px;">Patch ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Patch Date</th>
+            <th style="border: 1px solid black; padding: 8px;">Thread Date</th>
             <th style="border: 1px solid black; padding: 8px;">ID</th>
             <th style="border: 1px solid black; padding: 8px;">Action</th>
         </tr>
@@ -24,14 +25,19 @@
     <tbody>
         {% for thread in thread_list %}
         <tr>
-            <td style="border: 1px solid black; padding: 8px;">{{ thread.subject_line }}</td>
+            <td style="border: 1px solid black; padding: 8px;">
+                <a href="/message-id/{{ thread.message_id }}">{{ thread.subject_line }}</a>
+            </td>
             <td style="border: 1px solid black; padding: 8px;">{{ thread.sender }}</td>
-            <td style="border: 1px solid black; padding: 8px;">{{ thread.thread_id }}</td>
-            <td style="border: 1px solid black; padding: 8px;">{{ thread.message_id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">
+                <a href="/thread/{{ thread.thread_id }}">{{ thread.thread_subject }}</a>
+            </td>
             <td style="border: 1px solid black; padding: 8px;">{{ thread.file_count }}</td>
             <td style="border: 1px solid black; padding: 8px;">{{ thread.file_version }}</td>
             <td style="border: 1px solid black; padding: 8px;">{{ thread.commit_sha }}</td>
             <td style="border: 1px solid black; padding: 8px;" class="patch-id-cell">{{ thread.patch_id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.patch_date }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.thread_date }}</td>
             <td style="border: 1px solid black; padding: 8px;">{{ thread.id }}</td>
             <td style="border: 1px solid black; padding: 8px;">
                 {% if not thread.commit_sha and not thread.patch_id %}
@@ -72,14 +78,19 @@
                     const row = document.createElement('tr');
 
                     row.innerHTML = `
-                        <td style="border: 1px solid black; padding: 8px;">${thread.subject_line}</td>
+                        <td style="border: 1px solid black; padding: 8px;">
+                            <a href="/message-id/${thread.message_id}">${thread.subject_line}</a>
+                        </td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.sender}</td>
-                        <td style="border: 1px solid black; padding: 8px;">${thread.thread_id}</td>
-                        <td style="border: 1px solid black; padding: 8px;">${thread.message_id}</td>
+                        <td style="border: 1px solid black; padding: 8px;">
+                            <a href="/thread/${thread.thread_id}">${thread.thread_subject}</a>
+                        </td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.file_count || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.file_version || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.commit_sha || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;" class="patch-id-cell">${thread.patch_id || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.patch_date || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.thread_date || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.id || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;">
                             ${!thread.commit_sha && !thread.patch_id ? '<button onclick="createPatch(this)">Create Patch</button>' : ''}
