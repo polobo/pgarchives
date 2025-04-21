@@ -47,7 +47,7 @@ def threads(request):
     thread_list = [
         {
             "thread_id": "1",
-            "message_id": "msg-001",
+            "message_id": 101,
             "file_count": 5,
             "file_version": "v1",
             "commit_sha": None,
@@ -61,7 +61,7 @@ def threads(request):
         },
         {
             "thread_id": "2",
-            "message_id": "msg-002",
+            "message_id": 102,
             "file_count": 3,
             "file_version": "v1",
             "commit_sha": "def456",
@@ -75,7 +75,7 @@ def threads(request):
         },
         {
             "thread_id": "3",
-            "message_id": "msg-003",
+            "message_id": 103,
             "file_count": 7,
             "file_version": "v2",
             "commit_sha": None,
@@ -132,7 +132,7 @@ def threads_with_patches(request):
     thread_list = [
         {
             "thread_id": str(row[0]),
-            "message_id": row[4],
+            "message_id": row[1],
             "file_count": row[5],
             "file_version": None,
             "commit_sha": None,
@@ -152,19 +152,80 @@ def threads_with_patches(request):
 
     return resp
 
+def get_patch_data_as_json(threadid, messageid):
+    # Execute a placeholder SQL query
+    with connection.cursor() as cursor:
+        cursor.execute("""-- Find threads with patches
+                    select
+                        pm.threadid,
+                        pm.id,
+                        tm.messageid as thread_messageid,
+                        mrm.mostrecent_messageid,
+                        pm.messageid as patch_messageid,
+                        ma.fileset,
+                        pm._from as patch_from_author,
+                        tm.date as thread_messagedate,
+                        mrm.mostrecent_messagedate,
+                        pm.date as patch_messagedate,
+                        tm.subject as thread_subject_line
+                    from messages AS pm --patch message
+                    join messages AS tm on (pm.threadid = tm.id and tm.id = %s) --thread message
+                    join lateral (
+                        select 
+                            id as mostrecent_id,
+                            messageid as mostrecent_messageid,
+                            date as mostrecent_messagedate
+                        from messages
+                        where threadid = pm.threadid
+                       order by date desc limit 1
+                    ) as mrm on true
+                    join lateral (
+                       select jsonb_agg(
+                                jsonb_build_object(
+                                    'filename', filename,
+                                    'content_type', contenttype,
+                                    'is_patch', is_patch(attachments)
+                                ) order by filename) as fileset
+                       from attachments
+                       where pm.id = attachments.message
+                    ) as ma on true
+                    where pm.id = %s;
+                       """, 
+                       (threadid, messageid))
+        row = cursor.fetchone()
 
+    # Convert the SQL result into patch_data
+    patch_data = {
+        "thread_id": row[0],
+        "message_id": row[1],
+        "thread_message_id": row[2],
+        "most_recent_message_id": row[3],
+        "patch_message_id": row[4],
+        "patch_from_author": row[6],
+        "fileset": json.loads(row[5]) if row[5] else [],
+        "thread_message_date": row[7].isoformat() if row[7] else None,
+        "most_recent_message_date": row[8].isoformat() if row[8] else None,
+        "patch_message_date": row[9].isoformat() if row[9] else None,
+        "thread_subject_line": row[10],
+    }
+
+    return json.dumps(patch_data)
 
 def create_cfapp_patch(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
-    print("Request body:", request.body)
+    print(request.body)
+    body_string = request.body.decode("utf-8")
+    body_json = json.loads(body_string)
+
     try:
         # Forward the request body to the external service
         response = requests.post(
             'http://localhost:8007/api/test/cfapp/create_patch',
             headers={'Content-Type': 'application/json'},
-            data=request.body)
+            data=get_patch_data_as_json(body_json["thread_id"], body_json["message_id"]),
+        )
 
         # Return the response from the external service
         return JsonResponse(response.json(), status=response.status_code)
