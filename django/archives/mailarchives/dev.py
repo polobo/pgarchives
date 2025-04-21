@@ -1,9 +1,10 @@
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import render
 from django.conf import settings
 import subprocess
 import os
 import datetime
-
+import json
 def debug(request):
     try:
         pg_repo_code = subprocess.check_output(
@@ -35,3 +36,95 @@ def debug(request):
             'pg_repo_code': pg_repo_code,
             'mbox_repo_files': mbox_repo_files,
         })
+
+def threads(request):
+    thread_list = [
+        {
+            "thread_id": "1",
+            "message_id": "msg-001",
+            "file_count": 5,
+            "file_version": "v1",
+            "commit_sha": None,
+            "patch_id": None,
+            "subject_line": "Initial discussion on feature X",
+            "sender": "user1@example.com",
+            "id": 101
+        },
+        {
+            "thread_id": "2",
+            "message_id": "msg-002",
+            "file_count": 3,
+            "file_version": "v1",
+            "commit_sha": "def456",
+            "patch_id": None,
+            "subject_line": "Follow-up on feature Y",
+            "sender": "user2@example.com",
+            "id": 102
+        },
+        {
+            "thread_id": "3",
+            "message_id": "msg-003",
+            "file_count": 7,
+            "file_version": "v2",
+            "commit_sha": None,
+            "patch_id": "patch-003",
+            "subject_line": "Bug fix discussion",
+            "sender": "user3@example.com",
+            "id": 103
+        }
+    ]
+
+    return render(
+        request,
+        'dev_threads.html',
+        {
+            'request': request,
+            'thread_list': thread_list,
+        })
+
+
+def threads_with_patches(request):
+    if not settings.PUBLIC_ARCHIVES:
+        return HttpResponseForbidden('No API access on private archives for now')
+
+    # Generate a fake result similar to dev.threads
+    thread_list = [
+        {
+            "thread_id": "1",
+            "message_id": "msg-001",
+            "file_count": 5,
+            "file_version": "v1",
+            "commit_sha": None,
+            "patch_id": None,
+            "subject_line": "Initial discussion on feature X",
+            "sender": "user1@example.com",
+            "id": 101
+        },
+        {
+            "thread_id": "2",
+            "message_id": "msg-002",
+            "file_count": 3,
+            "file_version": "v1",
+            "commit_sha": "def456",
+            "patch_id": None,
+            "subject_line": "Follow-up on feature Y",
+            "sender": "user2@example.com",
+            "id": 102
+        },
+        {
+            "thread_id": "3",
+            "message_id": "msg-003",
+            "file_count": 7,
+            "file_version": "v2",
+            "commit_sha": None,
+            "patch_id": "patch-003",
+            "subject_line": "Bug fix discussion",
+            "sender": "user3@example.com",
+            "id": 103
+        }
+    ]
+
+    resp = HttpResponse(content_type='application/json')
+    json.dump(thread_list, resp)
+
+    return resp

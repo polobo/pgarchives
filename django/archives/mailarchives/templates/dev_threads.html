@@ -1,0 +1,98 @@
+{%extends "page.html"%}
+{%block title%}PostgreSQL Mailing List Archives{%endblock%}
+{%load pgfilters%}
+{%block contents%}
+<h2>Development Thread Viewer</h2>
+
+<button onclick="loadThreadsWithPatches()">Load Threads with Patches</button>
+
+<table id="threads-table" style="border-collapse: collapse;">
+    <thead>
+        <tr>
+            <th style="border: 1px solid black; padding: 8px;">Subject Line</th>
+            <th style="border: 1px solid black; padding: 8px;">Sender</th>
+            <th style="border: 1px solid black; padding: 8px;">Thread ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Message ID</th>
+            <th style="border: 1px solid black; padding: 8px;">File Count</th>
+            <th style="border: 1px solid black; padding: 8px;">File Version</th>
+            <th style="border: 1px solid black; padding: 8px;">Commit SHA</th>
+            <th style="border: 1px solid black; padding: 8px;">Patch ID</th>
+            <th style="border: 1px solid black; padding: 8px;">ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for thread in thread_list %}
+        <tr>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.subject_line }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.sender }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.thread_id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.message_id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.file_count }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.file_version }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.commit_sha }}</td>
+            <td style="border: 1px solid black; padding: 8px;" class="patch-id-cell">{{ thread.patch_id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">{{ thread.id }}</td>
+            <td style="border: 1px solid black; padding: 8px;">
+                {% if not thread.commit_sha and not thread.patch_id %}
+                    <button onclick="createPatch(this)">Create Patch</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<script>
+    function createPatch(button) {
+        // Generate a random number between 1 and 1000
+        const randomPatchId = Math.floor(Math.random() * 1000) + 1;
+
+        // Find the row containing the button
+        const row = button.closest('tr');
+
+        // Find the cell with the class "patch-id-cell" and update its content
+        const patchIdCell = row.querySelector('.patch-id-cell');
+        patchIdCell.textContent = randomPatchId;
+    }
+
+    function loadThreadsWithPatches() {
+        fetch('/dev/api/threads_with_patches/')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const tableBody = document.querySelector('#threads-table tbody');
+                tableBody.innerHTML = ''; // Clear existing rows
+
+                data.forEach(thread => {
+                    const row = document.createElement('tr');
+
+                    row.innerHTML = `
+                        <td style="border: 1px solid black; padding: 8px;">${thread.subject_line}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.sender}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.thread_id}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.message_id}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.file_count || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.file_version || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.commit_sha || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;" class="patch-id-cell">${thread.patch_id || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.id || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">
+                            ${!thread.commit_sha && !thread.patch_id ? '<button onclick="createPatch(this)">Create Patch</button>' : ''}
+                        </td>
+                    `;
+
+                    tableBody.appendChild(row);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching threads with patches:', error);
+            });
+    }
+</script>
+
+{%endblock%}
