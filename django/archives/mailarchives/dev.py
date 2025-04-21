@@ -167,14 +167,19 @@ def get_patch_data_as_json(threadid, messageid):
                         tm.date as thread_messagedate,
                         mrm.mostrecent_messagedate,
                         pm.date as patch_messagedate,
-                        tm.subject as thread_subject_line
+                        tm.subject as thread_subject_line,
+                        mrm.most_recent_subject_line,
+                        mrm.most_recent_from_author,
+                        tm._from as thread_from_author
                     from messages AS pm --patch message
                     join messages AS tm on (pm.threadid = tm.id and tm.id = %s) --thread message
                     join lateral (
                         select 
                             id as mostrecent_id,
                             messageid as mostrecent_messageid,
-                            date as mostrecent_messagedate
+                            date as mostrecent_messagedate,
+                            subject as most_recent_subject_line,
+                            _from as most_recent_from_author
                         from messages
                         where threadid = pm.threadid
                        order by date desc limit 1
@@ -208,6 +213,9 @@ def get_patch_data_as_json(threadid, messageid):
         "most_recent_message_date": row[8].isoformat() if row[8] else None,
         "patch_message_date": row[9].isoformat() if row[9] else None,
         "thread_subject_line": row[10],
+        "most_recent_subject_line": row[11],
+        "most_recent_from_author": row[12],
+        "thread_from_author": row[13],
     }
 
     return json.dumps(patch_data)
