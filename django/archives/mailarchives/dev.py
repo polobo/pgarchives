@@ -2,10 +2,14 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import render
 from django.conf import settings
 from django.db import connection
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
 import subprocess
 import os
 import datetime
 import json
+import random
+import requests
 
 def debug(request):
     try:
@@ -147,3 +151,22 @@ def threads_with_patches(request):
     json.dump(thread_list, resp)
 
     return resp
+
+
+
+def create_cfapp_patch(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+    print("Request body:", request.body)
+    try:
+        # Forward the request body to the external service
+        response = requests.post(
+            'http://localhost:8007/api/test/cfapp/create_patch',
+            headers={'Content-Type': 'application/json'},
+            data=request.body)
+
+        # Return the response from the external service
+        return JsonResponse(response.json(), status=response.status_code)
+    except requests.RequestException as e:
+        return JsonResponse({'error': f'Failed to proxy request: {str(e)}'}, status=500)

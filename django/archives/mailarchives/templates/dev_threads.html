@@ -24,7 +24,7 @@
     </thead>
     <tbody>
         {% for thread in thread_list %}
-        <tr>
+        <tr data-thread-id="{{ thread.thread_id }}" data-message-id="{{ thread.message_id }}">
             <td style="border: 1px solid black; padding: 8px;">
                 <a href="/message-id/{{ thread.message_id }}">{{ thread.subject_line }}</a>
             </td>
@@ -51,15 +51,43 @@
 
 <script>
     function createPatch(button) {
-        // Generate a random number between 1 and 1000
-        const randomPatchId = Math.floor(Math.random() * 1000) + 1;
-
         // Find the row containing the button
         const row = button.closest('tr');
 
-        // Find the cell with the class "patch-id-cell" and update its content
+        // Extract thread_id and message_id from data attributes
+        const threadId = row.getAttribute('data-thread-id');
+        const messageId = row.getAttribute('data-message-id');
+
+        // Hide the button
+        button.style.display = 'none';
+
+        // Find the cell with the class "patch-id-cell"
         const patchIdCell = row.querySelector('.patch-id-cell');
-        patchIdCell.textContent = randomPatchId;
+
+        // Post the data to the API
+        fetch('/dev/api/create_cfapp_patch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ thread_id: threadId, message_id: messageId }),
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update the patchIdCell with the returned patch ID
+            patchIdCell.textContent = data.patch_id || 'N/A';
+            console.log('Patch created successfully:', data);
+        })
+        .catch(error => {
+            console.error('Error creating patch:', error);
+            // Show the button again if there was an error
+            button.style.display = 'inline';
+        });
     }
 
     function loadThreadsWithPatches() {
@@ -76,6 +104,8 @@
 
                 data.forEach(thread => {
                     const row = document.createElement('tr');
+                    row.setAttribute('data-thread-id', thread.thread_id);
+                    row.setAttribute('data-message-id', thread.message_id);
 
                     row.innerHTML = `
                         <td style="border: 1px solid black; padding: 8px;">

@@ -13,6 +13,7 @@ urlpatterns = [
     re_path(r'^dev/debug/', archives.mailarchives.dev.debug),
     re_path(r'^dev/threads/', archives.mailarchives.dev.threads),
     re_path(r'^dev/api/threads_with_patches/', archives.mailarchives.dev.threads_with_patches),
+    re_path(r'^dev/api/create_cfapp_patch$', archives.mailarchives.dev.create_cfapp_patch),
     # Examples:
     # re_path(r'^$', 'archives.views.home', name='home),
     # re_path(r'^archives/', include('archives.foo.urls')),
