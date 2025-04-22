@@ -102,9 +102,10 @@ def threads_with_patches(request):
     if not settings.PUBLIC_ARCHIVES:
         return HttpResponseForbidden('No API access on private archives for now')
 
-    # Execute a placeholder SQL query
     with connection.cursor() as cursor:
         cursor.execute("""-- Find threads with patches
+                select *
+                from (
                     select distinct on (threadid)
                         pm.threadid,
                         pm.id, 
@@ -114,9 +115,18 @@ def threads_with_patches(request):
                         ma.patch_count,
                         tm.subject AS thread_subject,
                         pm.date AS patch_date,
-                        tm.date AS thread_date
+                        tm.date AS thread_date,
+                        tm.messageid AS thread_messageid
                     from messages AS pm --patch message
-                    left join messages AS tm on (pm.threadid = tm.id) --thread message
+                    -- threadid is a shared value but not a foreign key to anything
+                    -- in particular, it is not a self-join of messages
+                    join lateral (
+                       select *
+                       from messages as im
+                       where im.threadid = pm.threadid
+                       order by im.date asc
+                       limit 1
+                    ) AS tm on true --thread message is first known message
                     join lateral (
                        select count(*) as patch_count 
                        from attachments 
@@ -124,7 +134,9 @@ def threads_with_patches(request):
                     ) as ma on true 
                     where pm.has_attachment and ma.patch_count > 0 and pm.hiddenstatus is null 
                     order by pm.threadid, pm.date desc 
-                    limit 5;
+                ) as threads_with_patches
+                order by patch_date DESC
+                limit 10;
                        """)
         rows = cursor.fetchall()
 
@@ -142,7 +154,9 @@ def threads_with_patches(request):
             "sender": row[2],
             "id": row[1],
             "patch_date": row[7].strftime('%Y-%m-%d %H:%M:%S') if row[7] else None,
-            "thread_date": row[8].strftime('%Y-%m-%d %H:%M:%S') if row[8] else None
+            "thread_date": row[8].strftime('%Y-%m-%d %H:%M:%S') if row[8] else None,
+            "message_code": row[4],
+            "thread_code": row[9]
         }
         for row in rows
     ]
@@ -172,7 +186,13 @@ def get_patch_data_as_json(threadid, messageid):
                         mrm.most_recent_from_author,
                         tm._from as thread_from_author
                     from messages AS pm --patch message
-                    join messages AS tm on (pm.threadid = tm.id and tm.id = %s) --thread message
+                    join lateral (
+                       select *
+                       from messages as im
+                       where im.threadid = pm.threadid
+                       order by im.date asc
+                       limit 1
+                    ) AS tm on true --thread message is first known message
                     join lateral (
                         select 
                             id as mostrecent_id,
@@ -197,7 +217,7 @@ def get_patch_data_as_json(threadid, messageid):
                     ) as ma on true
                     where pm.id = %s;
                        """, 
-                       (threadid, messageid))
+                       (messageid,))
         row = cursor.fetchone()
 
     # Convert the SQL result into patch_data
@@ -224,7 +244,6 @@ def create_cfapp_patch(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request method'}, status=405)
 
-    print(request.body)
     body_string = request.body.decode("utf-8")
     body_json = json.loads(body_string)
 
@@ -240,3 +259,4 @@ def create_cfapp_patch(request):
         return JsonResponse(response.json(), status=response.status_code)
     except requests.RequestException as e:
         return JsonResponse({'error': f'Failed to proxy request: {str(e)}'}, status=500)
+

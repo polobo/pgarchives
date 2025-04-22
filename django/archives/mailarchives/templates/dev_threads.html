@@ -109,11 +109,11 @@
 
                     row.innerHTML = `
                         <td style="border: 1px solid black; padding: 8px;">
-                            <a href="/message-id/${thread.message_id}">${thread.subject_line}</a>
+                            <a href="/message-id/${thread.message_code}">${thread.subject_line}</a>
                         </td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.sender}</td>
                         <td style="border: 1px solid black; padding: 8px;">
-                            <a href="/thread/${thread.thread_id}">${thread.thread_subject}</a>
+                            <a href="/message-id/${thread.thread_code}">${thread.thread_subject}</a>
                         </td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.file_count || '-'}</td>
                         <td style="border: 1px solid black; padding: 8px;">${thread.file_version || '-'}</td>
