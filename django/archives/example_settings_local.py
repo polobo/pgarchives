@@ -17,3 +17,5 @@ DATABASES = {
 # Allow API access to all clients
 PUBLIC_ARCHIVES = True
 ALLOWED_HOSTS = ["*"]
+
+PGWEB_ADDRESS = 'http://localhost:8001'

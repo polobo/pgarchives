@@ -1,0 +1,117 @@
+{%extends "page.html"%}
+{%block title%}PostgreSQL Mailing List Archives{%endblock%}
+{%load pgfilters%}
+{%block contents%}
+<h2>Thread Viewer</h2>
+
+<button onclick="loadThreadsWithPatches()">Load Threads with Patches</button>
+
+<table id="threads-table" style="border-collapse: collapse;">
+    <thead>
+        <tr>
+            <th style="border: 1px solid black; padding: 8px;">Subject Line</th>
+            <th style="border: 1px solid black; padding: 8px;">Sender</th>
+            <th style="border: 1px solid black; padding: 8px;">Thread Subject</th>
+            <th style="border: 1px solid black; padding: 8px;">File Count</th>
+            <th style="border: 1px solid black; padding: 8px;">File Version</th>
+            <th style="border: 1px solid black; padding: 8px;">Commit SHA</th>
+            <th style="border: 1px solid black; padding: 8px;">Patch ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Patch Date</th>
+            <th style="border: 1px solid black; padding: 8px;">Thread Date</th>
+            <th style="border: 1px solid black; padding: 8px;">ID</th>
+            <th style="border: 1px solid black; padding: 8px;">Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Rows will be populated by JavaScript -->
+    </tbody>
+</table>
+
+<script>
+    function createPatch(button) {
+        // Find the row containing the button
+        const row = button.closest('tr');
+
+        // Extract thread_id and message_id from data attributes
+        const threadId = row.getAttribute('data-thread-id');
+        const messageId = row.getAttribute('data-message-id');
+
+        // Hide the button
+        button.style.display = 'none';
+
+        // Find the cell with the class "patch-id-cell"
+        const patchIdCell = row.querySelector('.patch-id-cell');
+
+        // Post the data to the API
+        fetch('/api/create_cfapp_patch', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ thread_id: threadId, message_id: messageId }),
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update the patchIdCell with the returned patch ID
+            patchIdCell.textContent = data.patch_id || 'N/A';
+            console.log('Patch created successfully:', data);
+        })
+        .catch(error => {
+            console.error('Error creating patch:', error);
+            // Show the button again if there was an error
+            button.style.display = 'inline';
+        });
+    }
+
+    function loadThreadsWithPatches() {
+        fetch('/api/threads_with_patches/')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const tableBody = document.querySelector('#threads-table tbody');
+                tableBody.innerHTML = ''; // Clear existing rows
+
+                data.forEach(thread => {
+                    const row = document.createElement('tr');
+                    row.setAttribute('data-thread-id', thread.thread_id);
+                    row.setAttribute('data-message-id', thread.message_id);
+
+                    row.innerHTML = `
+                        <td style="border: 1px solid black; padding: 8px;">
+                            <a href="/message-id/${thread.message_code}">${thread.subject_line}</a>
+                        </td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.sender}</td>
+                        <td style="border: 1px solid black; padding: 8px;">
+                            <a href="/message-id/${thread.thread_code}">${thread.thread_subject}</a>
+                        </td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.file_count || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.file_version || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.commit_sha || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;" class="patch-id-cell">${thread.patch_id || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.patch_date || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.thread_date || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">${thread.id || '-'}</td>
+                        <td style="border: 1px solid black; padding: 8px;">
+                            ${!thread.commit_sha && !thread.patch_id ? '<button onclick="createPatch(this)">Create Patch</button>' : ''}
+                        </td>
+                    `;
+
+                    tableBody.appendChild(row);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching threads with patches:', error);
+            });
+    }
+</script>
+
+{%endblock%}

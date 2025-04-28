@@ -9,6 +9,10 @@ import archives.mailarchives.views
 import archives.mailarchives.api
 
 urlpatterns = [
+    re_path(r'^threads/', archives.mailarchives.views.threads),
+    re_path(r'^api/threads_with_patches/', archives.mailarchives.api.threads_with_patches),
+    re_path(r'^api/create_cfapp_patch$', archives.mailarchives.api.create_cfapp_patch),
+
     # Examples:
     # re_path(r'^$', 'archives.views.home', name='home),
     # re_path(r'^archives/', include('archives.foo.urls')),
@@ -44,6 +48,7 @@ urlpatterns = [
 
     # Search
     re_path(r'^archives-search/', archives.mailarchives.views.search),
+    re_path(r'^search/$', archives.mailarchives.views.advanced_search),
 
     # Date etc indexes
     re_path(r'^list/([\w-]+)/$', archives.mailarchives.views.monthlist),

@@ -74,6 +74,9 @@ class ListGroup(models.Model):
     groupname = models.CharField(max_length=200, null=False, blank=False)
     sortkey = models.IntegerField(null=False)
 
+    def __str__(self):
+        return self.groupname
+
     class Meta:
         db_table = 'listgroups'
 
@@ -91,6 +94,9 @@ class List(models.Model):
     def maybe_shortdesc(self):
         if self.shortdesc:
             return self.shortdesc
+        return self.listname
+
+    def __str__(self):
         return self.listname
 
     class Meta:
