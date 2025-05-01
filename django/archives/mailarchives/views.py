@@ -706,6 +706,217 @@ def resend_complete(request, messageid):
     })
 
 
+
+def perform_search(query, datecode, sortcode, oneperthread=False, listid=None, listnames=None, streamer=None):
+    if not query and not streamer:
+        return []
+
+    if not query and streamer:
+        return False
+
+    if listid and listnames:
+        raise Exception("Cannot specify both listid and listname")
+
+    curs = connection.cursor()
+
+    lists = None
+    if listnames:
+        try:
+            curs.execute("SELECT listid FROM lists WHERE listname=ANY(%(names)s)", {
+                'names': listnames.split(','),
+            })
+            lists = [x for x, in curs.fetchall()]
+        except Exception:
+            # If failing to parse list of lists, just search all
+            lists = None
+
+    if listid:
+        lists = [listid]
+
+    if query.find('@') > 0:
+        cleaned_id = query.strip().removeprefix('<').removesuffix('>')
+        # This could be a messageid. So try to get that one specifically first.
+        # We don't do a more specific check if it's a messageid because doing
+        # a key lookup is cheap...
+        curs.execute("SELECT messageid FROM messages WHERE messageid=%(q)s", {
+            'q': cleaned_id,
+        })
+        a = curs.fetchall()
+        if len(a) == 1:
+            if streamer:
+                json.dump({'messageidmatch': 1}, streamer)
+            else:
+                return [{'messageidmatch': cleaned_id}]
+        # If not found, fall through to a regular search
+
+    firstdate = None
+    if datecode:
+        days = int(datecode)
+        if days >= 1 and days <= 365:
+            firstdate = datetime.now() - timedelta(days=days)
+
+    list_sort = 'i'
+    if sortcode:
+        if sortcode in ('d', 'r', 'i'):
+            list_sort = sortcode
+
+    curs.execute("SET gin_fuzzy_search_limit=10000")
+
+    qstr = """-- Search for messages matching query --
+SELECT * FROM (
+SELECT
+    *,
+"""
+    qstr += "    row_number() over (partition by threadid order by "
+    if list_sort == 'r':
+        qstr += "ts_rank_cd DESC"
+    elif list_sort == 'd':
+        qstr += "date DESC"
+    else:
+        qstr += "date ASC"
+    qstr += ") AS thread_rank"
+
+    qstr +="""
+FROM
+(
+    SELECT
+        messageid,
+        threadid,
+        date,
+        subject,
+        _from,
+        ts_rank_cd(fti, plainto_tsquery('public.pg', %(q)s)),
+        ts_headline(
+            bodytxt,
+            plainto_tsquery('public.pg', %(q)s),
+            'StartSel=\"[[[[[[\",
+            StopSel=\"]]]]]]\"'
+        )
+    FROM messages m
+    WHERE fti @@ plainto_tsquery('public.pg', %(q)s)
+"""
+
+    params = {
+        'q': query,
+    }
+    if lists:
+        qstr += " AND EXISTS (SELECT 1 FROM list_threads lt WHERE lt.threadid=m.threadid AND lt.listid=ANY(%(lists)s))"
+        params['lists'] = lists
+    if firstdate:
+        qstr += " AND m.date > %(date)s"
+        params['date'] = firstdate
+
+    qstr += ") AS finding ) AS ranking"
+
+    if oneperthread:
+        qstr += " WHERE thread_rank = 1"
+
+    if list_sort == 'r':
+        qstr += " ORDER BY ts_rank_cd DESC LIMIT 1000"
+    elif list_sort == 'd':
+        qstr += " ORDER BY date DESC LIMIT 1000"
+    else:
+        qstr += " ORDER BY date ASC LIMIT 1000"
+
+    curs.execute(qstr, params)
+    if streamer:
+        json.dump([
+        {
+            'm': messageid,
+            'd': date.isoformat(),
+            's': subject,
+            'f': mailfrom,
+            'r': rank,
+            'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
+        } for messageid, threadid, date, subject, mailfrom, rank, abstract, thread_rank in curs.fetchall()],
+        streamer)
+        return True
+    else:
+        return [
+        {
+            'm': messageid,
+            't': threadid,
+            'tr': thread_rank,
+            'd': date.isoformat(),
+            's': subject,
+            'f': mailfrom,
+            'r': rank,
+            'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
+            'a_found': abstract[abstract.find("[[[[[[") + 6:abstract.find("]]]]]]")],
+            'a_after': abstract.replace(abstract[abstract.find("[[[[[["):abstract.find("]]]]]]") + 6], "").replace("[[[[[[", "").replace("]]]]]]", ""),
+        } for messageid, threadid, date, subject, mailfrom, rank, abstract, thread_rank in curs.fetchall()]
+
+
+def advanced_search(request):
+    """
+    'pagelinks': "&nbsp;".join(
+    generate_pagelinks(pagenum,
+                        (totalhits - 1) // hitsperpage + 1,
+                        querystr)),
+    """
+    queryval = request.GET.get('q', None)
+    sortval = request.GET.get('s', 'd')
+    dateval = request.GET.get('d', '-1')
+    oneperthread = request.GET.get('r', '0')
+
+    listid = 1
+
+    hits = perform_search(queryval, dateval, sortval, oneperthread=='1', listid=listid)
+
+    totalhits = len(hits)
+
+    if totalhits == 1:
+        # might be a messageid match
+        if 'messageidmatch' in hits[0]:
+            return HttpResponseRedirect('/message-id/%s' % hits[0]['messageidmatch'])
+
+    firsthit = 1
+    hitsperpage = 20
+
+    sortoptions = (
+        {'val': 'r', 'text': 'Rank', 'selected': request.GET.get('s', '') not in ('d', 'i')},
+        {'val': 'd', 'text': 'Date', 'selected': request.GET.get('s', '') == 'd'},
+        {'val': 'i', 'text': 'Reverse date', 'selected': request.GET.get('s', '') == 'i'},
+    )
+
+    dateoptions = (
+        {'val': -1, 'text': 'anytime'},
+        {'val': 1, 'text': 'within last day'},
+        {'val': 7, 'text': 'within last week'},
+        {'val': 31, 'text': 'within last month'},
+        {'val': 186, 'text': 'within last 6 months'},
+        {'val': 365, 'text': 'within last year'},
+    )
+
+    (groups, listgroupid) = get_all_groups_and_lists(request)
+    return render_nav(NavContext(request, all_groups=groups), 'advancedsearch.html', {
+        'groups': [{'groupname': g['groupname'], 'lists': g['lists']} for g in groups],
+        'hitcount': totalhits,
+        'firsthit': firsthit,
+        'lasthit': min(totalhits, firsthit + hitsperpage - 1),
+        'query': request.GET['q'] if 'q' in request.GET else '',
+        'archives_root': '/', #settings.ARCHIVES_FRONT_ADDRESS,
+        'pagelinks': '',
+        'hits': [{
+            'date': h['d'],
+            'subject': h['s'],
+            'author': h['f'],
+            'messageid': h['m'],
+            'threadid': h['t'],
+            'thread_rank': h['tr'],
+            'abstract': h['a'],
+            'abstract_found': h['a_found'],
+            'abstract_after': h['a_after'],
+            'rank': h['r'],
+        } for h in hits[firsthit - 1:firsthit + hitsperpage - 1]],
+        'sortoptions': sortoptions,
+        'lists': List.objects.all().order_by("group__sortkey"),
+        'listid': listid,
+        'dates': dateoptions,
+        'dateval': dateval,
+        'oneperthread': oneperthread,
+    })
+
 @csrf_exempt
 def search(request):
     if not settings.PUBLIC_ARCHIVES:
@@ -722,8 +933,6 @@ def search(request):
     if not allowed:
         return HttpResponseForbidden('Invalid host')
 
-    curs = connection.cursor()
-
     # Perform a search of the archives and return a JSON document.
     # Expects the following (optional) POST parameters:
     # q = query to search for
@@ -737,87 +946,22 @@ def search(request):
     if 'q' not in request.POST:
         raise Http404('No search query specified')
     query = request.POST['q']
+    ln = request.POST['ln'] if 'ln' in request.POST else None
 
-    if 'ln' in request.POST:
-        try:
-            curs.execute("SELECT listid FROM lists WHERE listname=ANY(%(names)s)", {
-                'names': request.POST['ln'].split(','),
-            })
-            lists = [x for x, in curs.fetchall()]
-        except Exception:
-            # If failing to parse list of lists, just search all
-            lists = None
-    else:
-        lists = None
-
-    if 'd' in request.POST:
-        days = int(request.POST['d'])
-        if days < 1 or days > 365:
-            firstdate = None
-        else:
-            firstdate = datetime.now() - timedelta(days=days)
-    else:
-        firstdate = None
-
-    if 's' in request.POST:
-        list_sort = request.POST['s']
-        if list_sort not in ('d', 'r', 'i'):
-            list_stort = 'r'
-    else:
-        list_sort = 'r'
-
-    # Ok, we have all we need to do the search
-
-    if query.find('@') > 0:
-        cleaned_id = query.strip().removeprefix('<').removesuffix('>')
-        # This could be a messageid. So try to get that one specifically first.
-        # We don't do a more specific check if it's a messageid because doing
-        # a key lookup is cheap...
-        curs.execute("SELECT messageid FROM messages WHERE messageid=%(q)s", {
-            'q': cleaned_id,
-        })
-        a = curs.fetchall()
-        if len(a) == 1:
-            # Yup, this was a messageid
-            resp = HttpResponse(content_type='application/json')
-
-            json.dump({'messageidmatch': 1}, resp)
-            return resp
-        # If not found, fall through to a regular search
-
-    curs.execute("SET gin_fuzzy_search_limit=10000")
-    qstr = "SELECT messageid, date, subject, _from, ts_rank_cd(fti, plainto_tsquery('public.pg', %(q)s)), ts_headline(bodytxt, plainto_tsquery('public.pg', %(q)s),'StartSel=\"[[[[[[\",StopSel=\"]]]]]]\"') FROM messages m WHERE fti @@ plainto_tsquery('public.pg', %(q)s)"
-    params = {
-        'q': query,
-    }
-    if lists:
-        qstr += " AND EXISTS (SELECT 1 FROM list_threads lt WHERE lt.threadid=m.threadid AND lt.listid=ANY(%(lists)s))"
-        params['lists'] = lists
-    if firstdate:
-        qstr += " AND m.date > %(date)s"
-        params['date'] = firstdate
-    if list_sort == 'r':
-        qstr += " ORDER BY ts_rank_cd(fti, plainto_tsquery(%(q)s)) DESC LIMIT 1000"
-    elif list_sort == 'd':
-        qstr += " ORDER BY date DESC LIMIT 1000"
-    else:
-        qstr += " ORDER BY date ASC LIMIT 1000"
-
-    curs.execute(qstr, params)
+    dateval = request.POST.get('d', '-1')
+    sortval = request.POST.get('s', 'i')
 
     resp = HttpResponse(content_type='application/json')
-
-    json.dump([
-        {
-            'm': messageid,
-            'd': date.isoformat(),
-            's': subject,
-            'f': mailfrom,
-            'r': rank,
-            'a': abstract.replace("[[[[[[", "<b>").replace("]]]]]]", "</b>"),
-        } for messageid, date, subject, mailfrom, rank, abstract in curs.fetchall()],
-        resp)
+    perform_search(query, dateval, sortval, listname=ln, streamer=resp)
     return resp
+
+def threads(request):
+    return render(
+        request,
+        'threads.html',
+        {
+            'request': request,
+        })
 
 
 @cache(seconds=10)

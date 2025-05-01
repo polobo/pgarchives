@@ -62,7 +62,7 @@ class ArchivesParser(object):
                     self.date = lowdate
                 # Else we're going to go with what we found
         self.bodytxt = self.get_body()
-        self.attachments = []
+        self.attachments = [] # (filename, contenttype, payload)
         self.get_attachments()
         if len(self.attachments) > 0:
             log.status("Found %s attachments" % len(self.attachments))

@@ -1,0 +1,6 @@
+# Ignore files in the Python virtual environment
+/env/
+
+# A convenient place to store downloaded mbox files from production
+# to facilitate testing, and automation.
+/mboxes/

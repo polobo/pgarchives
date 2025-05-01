@@ -25,7 +25,7 @@ class Message(models.Model):
     messageid = models.TextField(null=False)
     bodytxt = models.TextField(null=False)
     # rawtxt is a bytea field, which django doesn't support (easily)
-    parentid = models.IntegerField(null=False, blank=False)
+    parentid = models.IntegerField(null=True, blank=True)
     has_attachment = models.BooleanField(null=False, default=False)
     hiddenstatus = models.IntegerField(null=True)
     # fti is a tsvector field, which django doesn't support (easily)
@@ -74,6 +74,9 @@ class ListGroup(models.Model):
     groupname = models.CharField(max_length=200, null=False, blank=False)
     sortkey = models.IntegerField(null=False)
 
+    def __str__(self):
+        return self.groupname
+
     class Meta:
         db_table = 'listgroups'
 
@@ -91,6 +94,9 @@ class List(models.Model):
     def maybe_shortdesc(self):
         if self.shortdesc:
             return self.shortdesc
+        return self.listname
+
+    def __str__(self):
         return self.listname
 
     class Meta:
